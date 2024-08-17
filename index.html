@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>文件哈希计算器与验证器</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Roboto', sans-serif;
+            margin: 0;
+            background-color: #fafafa;
+            color: #333;
+        }
+        .container {
+            max-width: 500px;
+            margin: 40px auto;
+            background-color: #ffffff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            border: 1px solid #ddd;
+        }
+        h2 {
+            text-align: center;
+            color: #444;
+            margin-bottom: 20px;
+            font-size: 1.5em;
+        }
+        .file-drop-area {
+            border: 2px solid #007bff;
+            padding: 20px;
+            text-align: center;
+            cursor: pointer;
+            border-radius: 8px;
+            background-color: #f7faff;
+            transition: background-color 0.3s ease, border-color 0.3s ease;
+        }
+        .file-drop-area.dragover {
+            background-color: #e0f7ff;
+            border-color: #0056b3;
+        }
+        input[type="file"], input[type="text"], select {
+            width: calc(100% - 24px);
+            padding: 12px;
+            margin: 8px 0;
+            border: 1px solid #ced4da;
+            border-radius: 4px;
+            background-color: #ffffff;
+            color: #495057;
+            font-size: 15px;
+            box-sizing: border-box;
+        }
+        select {
+            margin: 10px 0;
+        }
+        button {
+            width: 100%;
+            padding: 12px;
+            margin: 10px 0;
+            background-color: #007bff;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background-color 0.3s ease, box-shadow 0.3s ease;
+            font-size: 15px;
+            color: #ffffff;
+        }
+        button:hover {
+            background-color: #0056b3;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        }
+        #result, #verificationResult {
+            margin-top: 15px;
+            padding: 15px;
+            background-color: #f0f4f8;
+            border-radius: 4px;
+            font-size: 15px;
+            word-wrap: break-word;
+            border: 1px solid #ddd;
+        }
+        .match {
+            color: #28a745;
+            font-weight: 500;
+        }
+        .no-match {
+            color: #dc3545;
+            font-weight: 500;
+        }
+        #loader {
+            display: none;
+            border: 6px solid #e0e0e0;
+            border-radius: 50%;
+            border-top: 6px solid #007bff;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        #fileName {
+            font-size: 15px;
+            color: #666;
+            margin-top: 10px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2 id="title">文件哈希计算器与验证器</h2>
+        
+        <!-- 文件拖拽区或文件选择 -->
+        <div id="fileDropArea" class="file-drop-area">
+            拖拽文件到此处或点击选择文件
+            <input type="file" id="fileInput" style="display:none;">
+        </div>
+        <div id="fileName"></div>
+
+        <!-- 选择哈希算法 -->
+        <select id="hashAlgorithm">
+            <option value="SHA-256">SHA-256</option>
+            <option value="SHA-512">SHA-512</option>
+            <option value="SHA-1">SHA-1</option>
+            <option value="MD5">MD5</option>
+        </select>
+        <button id="calculateButton" onclick="calculateHash()">计算哈希</button>
+        
+        <!-- 加载动画 -->
+        <div id="loader"></div>
+
+        <!-- 显示计算出的哈希 -->
+        <div id="result"></div>
+
+        <hr>
+
+        <!-- 哈希验证 -->
+        <input type="text" id="hashInput" placeholder="请输入要验证的哈希值">
+        <button id="verifyButton" onclick="verifyHash()">验证哈希</button>
+
+        <!-- 清除输入和结果 -->
+        <button id="clearButton" onclick="clearAll()">清除</button>
+        
+        <!-- 验证结果 -->
+        <div id="verificationResult"></div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+    <script>
+        // 多语言支持内容
+        const translations = {
+            en: {
+                title: "File Hash Calculator & Verifier",
+                calculateButton: "Calculate Hash",
+                verifyButton: "Verify Hash",
+                clearButton: "Clear",
+                hashPlaceholder: "Enter hash to verify",
+                hashMatch: "Hash matches!",
+                hashNoMatch: "Hash does not match.",
+                selectFileAlert: "Please select a file first.",
+                enterHashAlert: "Please enter a hash to verify."
+            },
+            zh: {
+                title: "文件哈希计算器与验证器",
+                calculateButton: "计算哈希",
+                verifyButton: "验证哈希",
+                clearButton: "清除",
+                hashPlaceholder: "请输入要验证的哈希值",
+                hashMatch: "哈希值匹配！",
+                hashNoMatch: "哈希值不匹配。",
+                selectFileAlert: "请先选择一个文件。",
+                enterHashAlert: "请输入要验证的哈希值。"
+            }
+        };
+
+        // 检测用户语言并切换内容
+        function detectLanguage() {
+            const userLang = navigator.language || navigator.userLanguage;
+            if (userLang.startsWith('zh')) {
+                applyTranslations('zh');
+            } else {
+                applyTranslations('en');
+            }
+        }
+
+        // 应用翻译
+        function applyTranslations(lang) {
+            const t = translations[lang];
+            document.getElementById('title').textContent = t.title;
+            document.getElementById('calculateButton').textContent = t.calculateButton;
+            document.getElementById('verifyButton').textContent = t.verifyButton;
+            document.getElementById('clearButton').textContent = t.clearButton;
+            document.getElementById('hashInput').placeholder = t.hashPlaceholder;
+        }
+
+        // 文件拖拽处理
+        const fileDropArea = document.getElementById('fileDropArea');
+        const fileInput = document.getElementById('fileInput');
+        const fileName = document.getElementById('fileName');
+
+        fileDropArea.addEventListener('click', () => fileInput.click());
+
+        fileDropArea.addEventListener('dragover', (event) => {
+            event.preventDefault();
+            fileDropArea.classList.add('dragover');
+        });
+
+        fileDropArea.addEventListener('dragleave', () => fileDropArea.classList.remove('dragover'));
+
+        fileDropArea.addEventListener('drop', (event) => {
+            event.preventDefault();
+            fileDropArea.classList.remove('dragover');
+            fileInput.files = event.dataTransfer.files;
+            updateFileName();
+        });
+
+        fileInput.addEventListener('change', updateFileName);
+
+        function updateFileName() {
+            const file = fileInput.files[0];
+            if (file) {
+                fileName.textContent = `选中的文件: ${file.name}`;
+            } else {
+                fileName.textContent = '';
+            }
+        }
+
+        // 计算上传文件的哈希值
+        async function calculateHash() {
+            const file = fileInput.files[0];
+            const loader = document.getElementById('loader');
+            const resultElement = document.getElementById('result');
+            const hashAlgorithm = document.getElementById('hashAlgorithm').value;
+            const t = translations[navigator.language.startsWith('zh') ? 'zh' : 'en'];
+
+            if (!file) {
+                alert(t.selectFileAlert);
+                return;
+            }
+
+            loader.style.display = 'block'; // 显示加载动画
+
+            try {
+                if (hashAlgorithm === 'MD5') {
+                    const reader = new FileReader();
+                    reader.onload = function() {
+                        const data = new Uint8Array(reader.result);
+                        const hashHex = CryptoJS.algo.MD5.create().update(CryptoJS.lib.WordArray.create(data)).finalize().toString();
+                        resultElement.textContent = `${hashAlgorithm}: ${hashHex}`;
+                        loader.style.display = 'none'; // 隐藏加载动画
+                    };
+                    reader.readAsArrayBuffer(file);
+                } else {
+                    const arrayBuffer = await file.arrayBuffer();
+                    const hashBuffer = await crypto.subtle.digest(hashAlgorithm, arrayBuffer);
+                    const hashArray = Array.from(new Uint8Array(hashBuffer));
+                    const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+                    resultElement.textContent = `${hashAlgorithm}: ${hashHex}`;
+                    loader.style.display = 'none'; // 隐藏加载动画
+                }
+            } catch (error) {
+                resultElement.textContent = "计算哈希值时发生错误。";
+                loader.style.display = 'none'; // 隐藏加载动画
+            }
+        }
+
+        // 验证输入的哈希值是否与文件的哈希值匹配
+        async function verifyHash() {
+            const file = fileInput.files[0];
+            const enteredHash = document.getElementById('hashInput').value.trim();
+            const loader = document.getElementById('loader');
+            const resultElement = document.getElementById('verificationResult');
+            const hashAlgorithm = document.getElementById('hashAlgorithm').value;
+            const t = translations[navigator.language.startsWith('zh') ? 'zh' : 'en'];
+
+            if (!file) {
+                alert(t.selectFileAlert);
+                return;
+            }
+
+            if (!enteredHash) {
+                alert(t.enterHashAlert);
+                return;
+            }
+
+            loader.style.display = 'block'; // 显示加载动画
+
+            try {
+                if (hashAlgorithm === 'MD5') {
+                    const reader = new FileReader();
+                    reader.onload = function() {
+                        const data = new Uint8Array(reader.result);
+                        const hashHex = CryptoJS.algo.MD5.create().update(CryptoJS.lib.WordArray.create(data)).finalize().toString();
+                        if (hashHex === enteredHash) {
+                            resultElement.textContent = t.hashMatch;
+                            resultElement.classList.add('match');
+                            resultElement.classList.remove('no-match');
+                        } else {
+                            resultElement.textContent = t.hashNoMatch;
+                            resultElement.classList.add('no-match');
+                            resultElement.classList.remove('match');
+                        }
+                        loader.style.display = 'none'; // 隐藏加载动画
+                    };
+                    reader.readAsArrayBuffer(file);
+                } else {
+                    const arrayBuffer = await file.arrayBuffer();
+                    const hashBuffer = await crypto.subtle.digest(hashAlgorithm, arrayBuffer);
+                    const hashArray = Array.from(new Uint8Array(hashBuffer));
+                    const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+                    if (hashHex === enteredHash) {
+                        resultElement.textContent = t.hashMatch;
+                        resultElement.classList.add('match');
+                        resultElement.classList.remove('no-match');
+                    } else {
+                        resultElement.textContent = t.hashNoMatch;
+                        resultElement.classList.add('no-match');
+                        resultElement.classList.remove('match');
+                    }
+                    loader.style.display = 'none'; // 隐藏加载动画
+                }
+            } catch (error) {
+                resultElement.textContent = "验证哈希值时发生错误。";
+            } finally {
+                loader.style.display = 'none'; // 隐藏加载动画
+            }
+        }
+
+        // 清除所有输入和结果
+        function clearAll() {
+            document.getElementById('fileInput').value = '';
+            document.getElementById('hashInput').value = '';
+            document.getElementById('result').textContent = '';
+            document.getElementById('verificationResult').textContent = '';
+            document.getElementById('fileName').textContent = '';
+        }
+
+        // 初始化语言检测
+        detectLanguage();
+    </script>
+</body>
+</html>
